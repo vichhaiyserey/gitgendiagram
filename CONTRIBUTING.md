@@ -236,6 +236,11 @@ secdiagram/
 - Install Node tooling from the committed `docker/mermaid/package-lock.json` using `npm ci --omit=dev`; never use floating `npm install` in the image build.
 - Treat any new dependency as a security review item: prefer first-party, actively maintained projects with reproducible lockfiles.
 
+### 7. Container Security & Image Vulnerability Gating
+- Automated container builds and releases to Docker Hub (`vserey/secdiagram`) require that all **CRITICAL** and **HIGH** severity image vulnerabilities are resolved prior to push.
+- Container pushes are blocked by default if unresolved Critical or High vulnerabilities are detected.
+- If an upstream base image vulnerability cannot be remediated immediately, a documented **Contextual Reachability and Exploitability Analysis** must prove that the finding is not reachable and not exploitable in `secdiagram`'s container environment (e.g. dead code, lack of network ingress, unprivileged UID 10001 user execution) before publication is permitted.
+
 ---
 
 ## Branching Model
