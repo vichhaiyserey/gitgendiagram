@@ -68,6 +68,19 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn("npm ci --omit=dev", dockerfile)
         self.assertNotIn("npm install -g", dockerfile)
 
+    def test_agent_rule_enforces_image_vulnerability_gating(self) -> None:
+        agents_text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("Rule 7: Mandatory Container Image Vulnerability Gating & Reachability Analysis", agents_text)
+        self.assertIn("vserey/secdiagram", agents_text)
+        self.assertIn("CRITICAL", agents_text)
+        self.assertIn("HIGH", agents_text)
+        self.assertIn("Contextual Reachability and Exploitability Analysis", agents_text)
+        self.assertIn("not actually reachable and not exploitable", agents_text)
+
+        contrib_text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("Container Security & Image Vulnerability Gating", contrib_text)
+        self.assertIn("vserey/secdiagram", contrib_text)
+
 
 if __name__ == "__main__":
     unittest.main()
