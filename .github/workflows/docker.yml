@@ -48,6 +48,9 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test CLI
         run: docker run --rm secdiagram:ci --help
+      - name: Verify containerized diagram generation
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" secdiagram:ci --dir /repo/tests/fixtures/sample_app --out /tmp/verify-out --format mermaid --image png --no-security
       # Report-only: the bundled Node.js/Mermaid CLI layer can carry upstream
       # base-image CVEs that cannot be fixed from this repository.
       - name: Trivy image scan
@@ -57,6 +60,7 @@ jobs:
           scanners: vuln,secret
           severity: CRITICAL,HIGH
           format: sarif
+          limit-severities-for-sarif: true
           output: trivy-image.sarif
           exit-code: "0"
           ignore-unfixed: true

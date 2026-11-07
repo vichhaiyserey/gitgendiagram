@@ -280,6 +280,10 @@ secdiagram/
    - Ensure linter passes: `ruff check .`.
    - Ensure type check passes: `mypy`.
    - Ensure security scan passes: `python -m bandit -r secdiagram_core -lll`.
+   - Ensure containerized build and smoke test pass:
+     `docker build -t secdiagram:verify . && docker run --rm secdiagram:verify --help`
+   - Ensure container image vulnerability scan passes:
+     `trivy image --severity CRITICAL,HIGH secdiagram:verify`
 
 3. **Verify Git Hygiene**:
    - Verify no secrets, `.env` files, temporary screenshots, or dump files are staged:
