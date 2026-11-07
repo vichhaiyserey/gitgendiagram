@@ -81,6 +81,27 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn("Container Security & Image Vulnerability Gating", contrib_text)
         self.assertIn("vserey/secdiagram", contrib_text)
 
+    def test_verification_includes_containerized_run_and_trivy_scan(self) -> None:
+        agents_text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("Step 4: Run Containerized Build & Smoke Test Verification", agents_text)
+        self.assertIn("docker run --rm secdiagram:verify --help", agents_text)
+        self.assertIn("Step 5: Run Container Image Vulnerability Scan with Trivy", agents_text)
+        self.assertIn("trivy image --severity CRITICAL,HIGH", agents_text)
+
+        contrib_text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("docker run --rm secdiagram:verify --help", contrib_text)
+        self.assertIn("trivy image --severity CRITICAL,HIGH secdiagram:verify", contrib_text)
+
+        docker_yml = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
+        self.assertIn("Smoke test CLI", docker_yml)
+        self.assertIn("Verify containerized diagram generation", docker_yml)
+        self.assertIn("Trivy image scan", docker_yml)
+
+        release_yml = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn("Smoke test CLI", release_yml)
+        self.assertIn("Verify containerized diagram generation", release_yml)
+        self.assertIn("Trivy image scan", release_yml)
+
 
 if __name__ == "__main__":
     unittest.main()

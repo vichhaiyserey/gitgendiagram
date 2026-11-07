@@ -135,23 +135,29 @@ python -m bandit -r secdiagram_core -lll
 ```
 - **Requirement**: Zero high/critical severity findings.
 
-### Step 4: Verify Git Working Tree
+### Step 4: Run Containerized Build & Smoke Test Verification
+```bash
+# Build local candidate image
+docker build -t secdiagram:verify .
+
+# Smoke test CLI help and offline diagram generation
+docker run --rm secdiagram:verify --help
+docker run --rm -v "${PWD}:/repo" secdiagram:verify --dir /repo/tests/fixtures/sample_app --out /tmp/verify-out --format mermaid --image png --no-security
+```
+- **Requirement**: Container image builds cleanly without errors; CLI executes correctly as non-root user `secdiagram` (`uid 10001`); headless Chromium and Mermaid CLI render diagrams offline.
+
+### Step 5: Run Container Image Vulnerability Scan with Trivy
+```bash
+trivy image --severity CRITICAL,HIGH secdiagram:verify
+```
+- **Requirement**: Zero unresolved Critical or High vulnerabilities. In accordance with Rule 7, any unfixable upstream base image CVE must have a documented Contextual Reachability Analysis confirming that the finding is neither reachable nor exploitable in `secdiagram` before publication or release. Otherwise, the image is blocked from publication.
+
+### Step 6: Verify Git Working Tree
 ```bash
 git status
 git diff
 ```
 - **Requirement**: Ensure no unintended files (such as `.coverage`, cache directories, test image dumps, or `.env` files) were modified or staged.
-
-### Step 5: Verify Container Image Security Before Release/Push
-When modifying container definitions (`Dockerfile`, `docker/**`, `.github/workflows/docker.yml`, `.github/workflows/release.yml`) or preparing release images intended for Docker Hub (`vserey/secdiagram`):
-```bash
-# Build local candidate image
-docker build -t vserey/secdiagram:verify .
-
-# Scan for Critical and High vulnerabilities
-trivy image --severity CRITICAL,HIGH vserey/secdiagram:verify
-```
-- **Requirement**: Zero unresolved Critical or High vulnerabilities prior to push. If an upstream base image vulnerability cannot be remediated immediately, a documented Contextual Reachability Analysis must prove that the finding is neither reachable nor exploitable in `secdiagram` before publication is permitted. Otherwise, the push is strictly blocked.
 
 ---
 
@@ -239,6 +245,9 @@ When creating branches, committing changes, or pushing on behalf of the user, AI
      python -m ruff check .
      mypy
      python -m bandit -r secdiagram_core -lll
+     docker build -t secdiagram:verify .
+     docker run --rm secdiagram:verify --help
+     trivy image --severity CRITICAL,HIGH secdiagram:verify
      git push origin develop
      ```
    - Open a Pull Request targeting `develop` when human review is required.
