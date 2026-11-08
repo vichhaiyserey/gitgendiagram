@@ -20,7 +20,7 @@ The guiding motto is: ***Small but Gold*** — minimal footprint, zero runtime b
 
 ## ⛔ 2. Absolute Non-Negotiable Constraints
 
-Agents must **NEVER** violate these 7 cardinal rules:
+Agents must **NEVER** violate these 8 cardinal rules:
 
 ### Rule 1: Zero External Runtime Dependencies
 - **Constraint**: `secdiagram`'s core package **must remain 100% standard library**.
@@ -62,7 +62,9 @@ Agents must **NEVER** violate these 7 cardinal rules:
 - **Action**:
   - Treat `develop` as the integration branch and keep it current with `main`.
   - Create feature branches from `develop`, commit the work, and push them to `origin`.
+  - Create or select the tracking issue first, move it to `In Progress` with `python scripts/taskctl.py start <issue>`, and move it to `In Review` when the pull request opens.
   - After the full verification suite passes, **do not leave completed work uncommitted**: merge the verified feature branch into `develop` locally and push `develop`. This default commit-and-merge step is pre-authorized for verified work; it does not require a separate user request.
+  - After the merge is verified, close the task with `python scripts/taskctl.py done <issue> --evidence-file <file>` and refresh the cache with `python scripts/taskctl.py sync`.
   - Push `develop` only as the result of a clean local feature-branch merge or the automated `develop-sync.yml` main sync.
   - Open additional Pull Requests against `develop` when human review is required.
   - Merge `develop` into `main` only when a release is ready; release tags belong on `main`.
@@ -79,6 +81,16 @@ Agents must **NEVER** violate these 7 cardinal rules:
     2. **Attack Surface & Ingress**: Confirm that the container does not expose listening services, open network daemons, or untrusted external inputs to the affected library.
     3. **Privilege & Sandboxing**: Verify that running as unprivileged user `secdiagram` (`uid 10001`) with read-only/volume mounts prevents exploitation or privilege escalation.
     4. **Audit Trail Documentation**: Record the formal analysis citing specific CVE ID, affected package/version, CVSS score, reachability rationale, non-exploitability proof, and upstream tracking issue in a documented security audit or baseline before allowing the push to proceed.
+
+### Rule 8: Mandatory Task Tracking (Init -> Progress -> Done)
+- **Constraint**: Every non-trivial change must be tracked on GitHub Issues and the Projects v2 board. GitHub is the source of truth; the local cache under `.secdiagram/tasks/` is a read-only, gitignored snapshot.
+- **Action**:
+  - Before editing code, create or select a task with `python scripts/taskctl.py new ...` (or link an existing issue).
+  - Move the task through the lifecycle with `start`, `block --reason`, `unblock`, `review`, and `done --evidence-file`.
+  - Record the verification evidence (tests, lint, types, SAST, container, Trivy) in the issue before closing it.
+  - Link the pull request with `Closes #N`; the `tasks-pr-check.yml` workflow fails without a linked issue.
+  - Run `python scripts/taskctl.py sync` after status changes. Never edit or commit `.secdiagram/tasks/`.
+  - If `gh` is unavailable or unauthenticated, stop and ask the user rather than creating an untracked workflow.
 
 ---
 
@@ -111,6 +123,12 @@ When implementing fixes or enhancements, modify only the relevant modules:
 ## 🧪 4. Required Agent Verification Steps
 
 Before declaring any coding task complete or committing changes, AI agents **MUST** execute the following verification steps in sequence:
+
+### Step 0: Confirm Task Tracking
+```bash
+python scripts/taskctl.py start <issue>
+```
+- **Requirement**: The change has an open GitHub issue with `type:*` and `priority:*` labels and the task is `In Progress` before code is edited.
 
 ### Step 1: Run Full Unit Test Suite
 ```bash
@@ -245,6 +263,7 @@ When creating branches, committing changes, or pushing on behalf of the user, AI
      python -m ruff check .
      mypy
      python -m bandit -r secdiagram_core -lll
+     python scripts/taskctl.py validate --offline
      docker build -t secdiagram:verify .
      docker run --rm secdiagram:verify --help
      trivy image --severity CRITICAL,HIGH secdiagram:verify

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/vichhaiyserey/secdiagram/security/advisories/new
+    about: Please report security issues privately, not in a public issue.
+  - name: Contributing guide
+    url: https://github.com/vichhaiyserey/secdiagram/blob/develop/CONTRIBUTING.md
+    about: Read the development workflow, branch model, and verification gates.
+  - name: Task tracking guide
+    url: https://github.com/vichhaiyserey/secdiagram/blob/develop/docs/TASK_TRACKING.md
+    about: Learn how issues move from Backlog to Done.
