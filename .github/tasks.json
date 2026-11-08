@@ -1,0 +1,89 @@
+{
+  "repo": "vichhaiyserey/secdiagram",
+  "project": {
+    "owner": "vichhaiyserey",
+    "number": null,
+    "title": "secdiagram Roadmap"
+  },
+  "fields": {
+    "status": "Status",
+    "priority": "Priority",
+    "type": "Type",
+    "area": "Area",
+    "size": "Size"
+  },
+  "statuses": [
+    "Backlog",
+    "Ready",
+    "In Progress",
+    "Blocked",
+    "In Review",
+    "Done"
+  ],
+  "priorities": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "types": {
+    "feature": {
+      "label": "type:feature",
+      "branch": "feat",
+      "title": "Feature"
+    },
+    "bug": {
+      "label": "type:bug",
+      "branch": "fix",
+      "title": "Bug"
+    },
+    "refactor": {
+      "label": "type:refactor",
+      "branch": "refactor",
+      "title": "Refactor"
+    },
+    "ci": {
+      "label": "type:ci",
+      "branch": "ci",
+      "title": "CI"
+    },
+    "docs": {
+      "label": "type:docs",
+      "branch": "docs",
+      "title": "Docs"
+    },
+    "test": {
+      "label": "type:test",
+      "branch": "test",
+      "title": "Test"
+    },
+    "security": {
+      "label": "type:security",
+      "branch": "fix",
+      "title": "Security"
+    }
+  },
+  "areas": [
+    "discovery",
+    "ast",
+    "graph",
+    "security",
+    "render",
+    "iac",
+    "cli",
+    "docs",
+    "ci"
+  ],
+  "sizes": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "milestones": [
+    "0.3.0",
+    "0.4.0"
+  ],
+  "cache_dir": ".secdiagram/tasks"
+}

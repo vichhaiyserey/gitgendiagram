@@ -16,6 +16,7 @@ This guide outlines our development workflow, architectural principles, coding s
   - [Linting and Formatting](#linting-and-formatting)
   - [Type Checking](#type-checking)
   - [Security and SAST Scans](#security-and-sast-scans)
+- [Task Tracking](#-task-tracking)
 - [Codebase Architecture](#-codebase-architecture)
 - [Coding Guidelines](#-coding-guidelines)
   - [Zero Runtime Dependencies](#1-zero-runtime-dependencies)
@@ -148,6 +149,32 @@ python -m pip_audit --strict --skip-editable
 
 ---
 
+## 🗂️ Task Tracking
+
+Every non-trivial change is tracked on **GitHub Issues** and a **Projects v2 board**. GitHub is the source of truth; the local cache under `.secdiagram/tasks/` is a gitignored, read-only snapshot for offline work.
+
+Lifecycle: `Backlog -> Ready -> In Progress -> In Review -> Done`, with `Blocked` while waiting on a dependency or decision.
+
+```bash
+# Create a task and add it to the board
+python scripts/taskctl.py new --type feature --title "Add Go manifest detection" \
+  --priority P1 --area discovery --milestone 0.3.0
+
+# Move through the lifecycle
+python scripts/taskctl.py start <issue>
+python scripts/taskctl.py block <issue> --reason "waiting on upstream API"
+python scripts/taskctl.py review <issue>
+python scripts/taskctl.py done <issue> --evidence-file evidence.md
+
+# Refresh and validate the offline cache
+python scripts/taskctl.py sync
+python scripts/taskctl.py validate --offline
+```
+
+Pull requests must reference an issue with `Closes #N`; the `tasks-pr-check.yml` workflow fails otherwise. See [docs/TASK_TRACKING.md](docs/TASK_TRACKING.md) for one-time setup, board fields, and troubleshooting.
+
+---
+
 ## 📂 Codebase Architecture
 
 ```text
@@ -263,7 +290,9 @@ secdiagram/
 
 ## 🤝 Pull Request Process
 
-1. **Fork and branch from `develop`**:
+1. **Create or select a task**: Open a GitHub issue (or run `python scripts/taskctl.py new ...`) and move it to `In Progress` with `python scripts/taskctl.py start <issue>`.
+
+2. **Fork and branch from `develop`**:
    ```bash
    git fetch origin
    git checkout develop
@@ -273,32 +302,35 @@ secdiagram/
    git checkout -b fix/sanitize-mermaid-subgraph-ids
    ```
 
-2. **Develop and test**:
+3. **Develop and test**:
    - Write clean, commented code conforming to the guidelines above.
    - Add comprehensive unit tests under `tests/` covering new functionality and edge cases.
    - Ensure all tests pass: `python -m unittest discover -s tests -v`.
    - Ensure linter passes: `ruff check .`.
    - Ensure type check passes: `mypy`.
    - Ensure security scan passes: `python -m bandit -r secdiagram_core -lll`.
+   - Ensure task metadata validates: `python scripts/taskctl.py validate --offline`.
    - Ensure containerized build and smoke test pass:
      `docker build -t secdiagram:verify . && docker run --rm secdiagram:verify --help`
    - Ensure container image vulnerability scan passes:
      `trivy image --severity CRITICAL,HIGH secdiagram:verify`
 
-3. **Verify Git Hygiene**:
+4. **Verify Git Hygiene**:
    - Verify no secrets, `.env` files, temporary screenshots, or dump files are staged:
      ```bash
      git status
      git diff --cached
      ```
+   - Confirm `.secdiagram/tasks/` is not staged; it is a local, read-only cache.
 
-4. **Submit PR**: Open a Pull Request targeting the `develop` branch. Provide a clear description of:
+5. **Submit PR**: Open a Pull Request targeting the `develop` branch. Provide a clear description of:
    - What the PR accomplishes.
    - Why the change is needed.
-   - Relevant issue numbers.
-   - Test results.
+   - A linked issue using `Closes #N`.
+   - Test results and verification evidence.
+   - Move the task to `In Review` with `python scripts/taskctl.py review <issue>` before requesting review.
 
-5. **Release promotion**: Maintainers merge `develop` into `main` via a release Pull Request only when the release is ready, then tag the verified commit on `main`.
+6. **Release promotion**: Maintainers merge `develop` into `main` via a release Pull Request only when the release is ready, then tag the verified commit on `main`.
 
 ---
 
