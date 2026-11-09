@@ -1,5 +1,5 @@
 # Stage 1: Install Mermaid CLI in official Node.js image
-FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS mermaid-builder
+FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS mermaid-builder
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 WORKDIR /opt/mermaid
 COPY docker/mermaid/package.json docker/mermaid/package-lock.json ./
@@ -7,7 +7,7 @@ RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 
 # Stage 2: Final runtime image
-FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # Labels following OCI specifications
 LABEL org.opencontainers.image.title="secdiagram" \
@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     fonts-freefont-ttf \
+    zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node binary and locked Mermaid CLI dependencies from the builder stage
