@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -90,7 +93,11 @@ class SupplyChainPinTests(unittest.TestCase):
 
         contrib_text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
         self.assertIn("docker run --rm secdiagram:verify --help", contrib_text)
-        self.assertIn("trivy image --severity CRITICAL,HIGH secdiagram:verify", contrib_text)
+        self.assertIn(
+            "trivy image --severity CRITICAL,HIGH --ignorefile .trivyignore.yaml "
+            "--exit-code 1 secdiagram:verify",
+            contrib_text,
+        )
 
         docker_yml = (ROOT / ".github" / "workflows" / "docker.yml").read_text(encoding="utf-8")
         self.assertIn("Smoke test CLI", docker_yml)
@@ -101,6 +108,117 @@ class SupplyChainPinTests(unittest.TestCase):
         self.assertIn("Smoke test CLI", release_yml)
         self.assertIn("Verify containerized diagram generation", release_yml)
         self.assertIn("Trivy image scan", release_yml)
+
+
+    def test_trivy_scans_use_blocking_baseline(self) -> None:
+        for name in ("docker.yml", "release.yml"):
+            text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            self.assertIn("trivyignores: .trivyignore.yaml", text, name)
+            self.assertIn('exit-code: "1"', text, name)
+            self.assertNotIn('exit-code: "0"', text, name)
+            self.assertNotIn("ignore-unfixed", text, name)
+
+    def test_trivy_baseline_entries_are_documented_and_expiring(self) -> None:
+        text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+        entries = re.findall(
+            r"^\s*-\s*id:\s*(\S+)(.*?)(?=^\s*-\s*id:|\Z)", text, re.M | re.S
+        )
+        self.assertGreater(len(entries), 0)
+        ids = [cve for cve, _ in entries]
+        self.assertEqual(len(ids), len(set(ids)), "duplicate baseline entries")
+        for cve, block in entries:
+            self.assertRegex(cve, r"^CVE-\d{4}-\d+$")
+            self.assertIn("statement:", block, cve)
+            self.assertRegex(block, r"expired_at:\s*\d{4}-\d{2}-\d{2}", cve)
+
+    def test_scheduled_image_scan_exists(self) -> None:
+        text = (ROOT / ".github" / "workflows" / "image-scan.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("schedule:", text)
+        self.assertIn("cron:", text)
+        self.assertIn("vserey/secdiagram:latest", text)
+        self.assertIn("trivyignores: .trivyignore.yaml", text)
+        self.assertIn('exit-code: "1"', text)
+
+    def test_refresh_script_refuses_fixable_findings(self) -> None:
+        report = {
+            "Results": [
+                {
+                    "Target": "image",
+                    "Vulnerabilities": [
+                        {
+                            "VulnerabilityID": "CVE-2099-0001",
+                            "PkgName": "zlib1g",
+                            "Severity": "HIGH",
+                            "FixedVersion": "1.2.3-1",
+                            "Status": "fixed",
+                        }
+                    ],
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "scan.json"
+            output = Path(tmp) / ".trivyignore.yaml"
+            source.write_text(json.dumps(report), encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "refresh_image_baseline.py"),
+                    str(source),
+                    "--expires",
+                    "2099-01-01",
+                    "--output",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("Refusing to baseline fixable", proc.stderr)
+            self.assertFalse(output.exists())
+
+    def test_refresh_script_writes_unfixed_baseline(self) -> None:
+        report = {
+            "Results": [
+                {
+                    "Target": "image",
+                    "Vulnerabilities": [
+                        {
+                            "VulnerabilityID": "CVE-2099-0002",
+                            "PkgName": "perl",
+                            "Severity": "HIGH",
+                            "Status": "affected",
+                        }
+                    ],
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "scan.json"
+            output = Path(tmp) / ".trivyignore.yaml"
+            source.write_text(json.dumps(report), encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "refresh_image_baseline.py"),
+                    str(source),
+                    "--expires",
+                    "2099-01-01",
+                    "--output",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            text = output.read_text(encoding="utf-8")
+            self.assertIn("CVE-2099-0002", text)
+            self.assertIn("statement:", text)
+            self.assertIn("expired_at: 2099-01-01", text)
 
 
 if __name__ == "__main__":
