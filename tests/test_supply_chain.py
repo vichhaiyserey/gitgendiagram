@@ -220,6 +220,11 @@ class SupplyChainPinTests(unittest.TestCase):
             self.assertIn("statement:", text)
             self.assertIn("expired_at: 2099-01-01", text)
 
+    def test_dependabot_ignores_node_major_updates(self) -> None:
+        text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        self.assertIn('dependency-name: "node"', text)
+        self.assertIn('"version-update:semver-major"', text)
+
 
 if __name__ == "__main__":
     unittest.main()
