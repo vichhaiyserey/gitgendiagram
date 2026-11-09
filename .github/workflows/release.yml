@@ -98,7 +98,7 @@ jobs:
         with:
           name: python-dist
           path: dist
-      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: dist/*
           generate_release_notes: true
@@ -124,6 +124,11 @@ jobs:
           tags: secdiagram:release
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Smoke test CLI
+        run: docker run --rm secdiagram:release --help
+      - name: Verify containerized diagram generation
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" secdiagram:release --dir /repo/tests/fixtures/sample_app --out /tmp/verify-out --format mermaid --image png --no-security
       # Report-only: the bundled Node.js/Mermaid CLI layer can carry upstream
       # base-image CVEs that cannot be fixed from this repository.
       - name: Trivy image scan
@@ -133,12 +138,13 @@ jobs:
           scanners: vuln,secret
           severity: CRITICAL,HIGH
           format: sarif
+          limit-severities-for-sarif: true
           output: trivy-release-image.sarif
           exit-code: "0"
           ignore-unfixed: true
       - name: Upload Trivy SARIF
         if: always() && hashFiles('trivy-release-image.sarif') != ''
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: trivy-release-image.sarif
           category: trivy-release-image
@@ -153,7 +159,7 @@ jobs:
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Log in to Docker Hub
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

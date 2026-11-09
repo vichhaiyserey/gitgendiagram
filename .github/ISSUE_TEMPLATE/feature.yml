@@ -1,0 +1,84 @@
+name: Feature request
+description: Propose a new capability or enhancement.
+title: "[Feature]: "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Keep the goal, scope, and acceptance criteria concrete so the work can be tracked from init to done.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should change, and why does it matter?
+      placeholder: Describe the problem and the desired outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope, and what is explicitly out of scope?
+      value: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, verifiable outcomes.
+      value: |
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - discovery
+        - ast
+        - graph
+        - security
+        - render
+        - iac
+        - cli
+        - docs
+        - ci
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: How will this be proven complete?
+      value: |
+        - [ ] `python -m unittest discover -s tests -v`
+        - [ ] `ruff check .`
+        - [ ] `mypy`
+        - [ ] `python -m bandit -r secdiagram_core -lll`
+        - [ ] `python scripts/taskctl.py validate --offline`

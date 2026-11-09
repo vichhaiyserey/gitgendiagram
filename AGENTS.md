@@ -20,7 +20,7 @@ The guiding motto is: ***Small but Gold*** — minimal footprint, zero runtime b
 
 ## ⛔ 2. Absolute Non-Negotiable Constraints
 
-Agents must **NEVER** violate these 6 cardinal rules:
+Agents must **NEVER** violate these 8 cardinal rules:
 
 ### Rule 1: Zero External Runtime Dependencies
 - **Constraint**: `secdiagram`'s core package **must remain 100% standard library**.
@@ -62,11 +62,35 @@ Agents must **NEVER** violate these 6 cardinal rules:
 - **Action**:
   - Treat `develop` as the integration branch and keep it current with `main`.
   - Create feature branches from `develop`, commit the work, and push them to `origin`.
+  - Create or select the tracking issue first, move it to `In Progress` with `python scripts/taskctl.py start <issue>`, and move it to `In Review` when the pull request opens.
   - After the full verification suite passes, **do not leave completed work uncommitted**: merge the verified feature branch into `develop` locally and push `develop`. This default commit-and-merge step is pre-authorized for verified work; it does not require a separate user request.
+  - After the merge is verified, close the task with `python scripts/taskctl.py done <issue> --evidence-file <file>` and refresh the cache with `python scripts/taskctl.py sync`.
   - Push `develop` only as the result of a clean local feature-branch merge or the automated `develop-sync.yml` main sync.
   - Open additional Pull Requests against `develop` when human review is required.
   - Merge `develop` into `main` only when a release is ready; release tags belong on `main`.
   - After a release, sync `main` back into `develop` (the `develop-sync.yml` workflow automates this and fails loudly on conflicts).
+
+### Rule 7: Mandatory Container Image Vulnerability Gating & Reachability Analysis
+- **Constraint**: Autonomous AI agents must **NEVER** build, release, or push container images to Docker Hub (`vserey/secdiagram`) or any distribution registry with unresolved **CRITICAL** or **HIGH** severity image vulnerabilities.
+- **Action**:
+  - Prior to initiating, approving, or committing release workflows or container pushes to `vserey/secdiagram`, agents must ensure that all Critical and High severity vulnerabilities discovered in container scanning (e.g. via Trivy) are fully resolved.
+  - **Hard Blocking Default**: If any Critical or High vulnerability is detected, pushing the image is **strictly blocked** by default. Agents must never bypass this gate blindly with `exit-code: 0`, `--ignore-unfixed`, or unverified suppressions.
+  - **Permitted Exception (Contextual Reachability & Exploitability Analysis)**:
+    If an upstream fix is unavailable from base image distributors (e.g., Debian or Node upstream CVEs) and cannot be resolved through dependency updates or image hardening, the push may ONLY proceed if the agent performs and documents a formal **Contextual Reachability and Exploitability Analysis** demonstrating with certainty that the vulnerability is **not actually reachable and not exploitable** in `secdiagram`'s container environment:
+    1. **Execution Path & Call Flow**: Prove the vulnerable function, binary, or package is never loaded, imported, or executed by `secdiagram` CLI, the platform server, or Mermaid CLI.
+    2. **Attack Surface & Ingress**: Confirm that the container does not expose listening services, open network daemons, or untrusted external inputs to the affected library.
+    3. **Privilege & Sandboxing**: Verify that running as unprivileged user `secdiagram` (`uid 10001`) with read-only/volume mounts prevents exploitation or privilege escalation.
+    4. **Audit Trail Documentation**: Record the formal analysis citing specific CVE ID, affected package/version, CVSS score, reachability rationale, non-exploitability proof, and upstream tracking issue in a documented security audit or baseline before allowing the push to proceed.
+
+### Rule 8: Mandatory Task Tracking (Init -> Progress -> Done)
+- **Constraint**: Every non-trivial change must be tracked on GitHub Issues and the Projects v2 board. GitHub is the source of truth; the local cache under `.secdiagram/tasks/` is a read-only, gitignored snapshot.
+- **Action**:
+  - Before editing code, create or select a task with `python scripts/taskctl.py new ...` (or link an existing issue).
+  - Move the task through the lifecycle with `start`, `block --reason`, `unblock`, `review`, and `done --evidence-file`.
+  - Record the verification evidence (tests, lint, types, SAST, container, Trivy) in the issue before closing it.
+  - Link the pull request with `Closes #N`; the `tasks-pr-check.yml` workflow fails without a linked issue.
+  - Run `python scripts/taskctl.py sync` after status changes. Never edit or commit `.secdiagram/tasks/`.
+  - If `gh` is unavailable or unauthenticated, stop and ask the user rather than creating an untracked workflow.
 
 ---
 
@@ -76,29 +100,35 @@ When implementing fixes or enhancements, modify only the relevant modules:
 
 | Module | Responsibility | Key Interfaces / Functions |
 |---|---|---|
-| [`secdiagram_core/discover.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/discover.py) | Repository enumeration, `.gitignore` parsing, polyglot manifest detection | `discover_repo()`, `RepoContext` |
-| [`secdiagram_core/ast_index.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/ast_index.py) | Python AST parsing for definitions, routes, calls, tasks, type annotations | `index_repo()`, `FileIndex`, `DefRec`, `CallRec` |
-| [`secdiagram_core/java_index.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/java_index.py) | Stdlib-only Java/Spring lexical indexer, DI/call graph edges, and Java SAST heuristics | `index_java()`, `build_java_graph()`, `analyze_java_security()` |
-| [`secdiagram_core/resolver.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/resolver.py) | Qualified symbol resolution, star-import handling, re-exports | `Resolver`, `Resolution` |
-| [`secdiagram_core/graph_builder.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/graph_builder.py) | Assembly of dependency graph, node pruning, edge deduplication | `GraphBuilder`, `BuildStats` |
-| [`secdiagram_core/high_level.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/high_level.py) | C4 subsystem compiler, tiering (Ingress, Gateway, Services, Data, External) | `build_high_level_architecture()`, `render_mermaid_highlevel()` |
-| [`secdiagram_core/security.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/security.py) | SAST heuristics: taint tracking, SQLi, command injection, secret patterns | `analyze()`, `Finding` |
-| [`secdiagram_core/iac.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/iac.py) | Infrastructure-as-Code audits: Dockerfile, Compose, K8s, Terraform | `analyze_iac()`, `IacResult` |
-| [`secdiagram_core/render_mermaid.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/render_mermaid.py) | Detailed Mermaid diagram generation, node shape styling | `render_mermaid()` |
-| [`secdiagram_core/render_image.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/render_image.py) | PNG/SVG/PDF rendering via local `mmdc`, Kroki, or mermaid.ink | `render_image()`, `ImageRenderError` |
-| [`secdiagram_core/render_sarif.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/render_sarif.py) | OASIS SARIF v2.1.0 security report generation | `render_sarif()` |
-| [`secdiagram_core/baseline.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/baseline.py) | Security baseline: load/write/deterministically suppress known findings | `load_baseline()`, `write_baseline()`, `apply_baseline()` |
-| [`secdiagram_core/render_markdown.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/render_markdown.py) | Markdown architecture report with citations | `render_markdown()` |
-| [`secdiagram_core/render_json.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/render_json.py) | Full structured graph JSON serializer | `render_json()` |
-| [`secdiagram_core/llm.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/llm.py) | Structured prompt templates & streaming/request handling for Ollama/OpenAI | `generate_narrative()`, `NarrativeError` |
-| [`secdiagram_core/cli.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/cli.py) | CLI argument parser, pipeline orchestration, exit codes | `main()`, `build_parser()` |
-| [`secdiagram_core/model.py`](file:///C:/Users/Lenovo/projects/clone-secdiagram/secdiagram_core/model.py) | Data models: `Graph`, `Node`, `Edge`, `Finding`, `Loc`, `stable_id` | `stable_id()`, `SEVERITY_RANK` |
+| [`secdiagram_core/discover.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/discover.py) | Repository enumeration, `.gitignore` parsing, polyglot manifest detection | `discover_repo()`, `RepoContext` |
+| [`secdiagram_core/ast_index.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/ast_index.py) | Python AST parsing for definitions, routes, calls, tasks, type annotations | `index_repo()`, `FileIndex`, `DefRec`, `CallRec` |
+| [`secdiagram_core/java_index.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/java_index.py) | Stdlib-only Java/Spring lexical indexer, DI/call graph edges, and Java SAST heuristics | `index_java()`, `build_java_graph()`, `analyze_java_security()` |
+| [`secdiagram_core/resolver.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/resolver.py) | Qualified symbol resolution, star-import handling, re-exports | `Resolver`, `Resolution` |
+| [`secdiagram_core/graph_builder.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/graph_builder.py) | Assembly of dependency graph, node pruning, edge deduplication | `GraphBuilder`, `BuildStats` |
+| [`secdiagram_core/high_level.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/high_level.py) | C4 subsystem compiler, tiering (Ingress, Gateway, Services, Data, External) | `build_high_level_architecture()`, `render_mermaid_highlevel()` |
+| [`secdiagram_core/security.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/security.py) | SAST heuristics: taint tracking, SQLi, command injection, secret patterns | `analyze()`, `Finding` |
+| [`secdiagram_core/iac.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/iac.py) | Infrastructure-as-Code audits: Dockerfile, Compose, K8s, Terraform | `analyze_iac()`, `IacResult` |
+| [`secdiagram_core/render_mermaid.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/render_mermaid.py) | Detailed Mermaid diagram generation, node shape styling | `render_mermaid()` |
+| [`secdiagram_core/render_image.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/render_image.py) | PNG/SVG/PDF rendering via local `mmdc`, Kroki, or mermaid.ink | `render_image()`, `ImageRenderError` |
+| [`secdiagram_core/render_sarif.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/render_sarif.py) | OASIS SARIF v2.1.0 security report generation | `render_sarif()` |
+| [`secdiagram_core/baseline.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/baseline.py) | Security baseline: load/write/deterministically suppress known findings | `load_baseline()`, `write_baseline()`, `apply_baseline()` |
+| [`secdiagram_core/render_markdown.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/render_markdown.py) | Markdown architecture report with citations | `render_markdown()` |
+| [`secdiagram_core/render_json.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/render_json.py) | Full structured graph JSON serializer | `render_json()` |
+| [`secdiagram_core/llm.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/llm.py) | Structured prompt templates & streaming/request handling for Ollama/OpenAI | `generate_narrative()`, `NarrativeError` |
+| [`secdiagram_core/cli.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/cli.py) | CLI argument parser, pipeline orchestration, exit codes | `main()`, `build_parser()` |
+| [`secdiagram_core/model.py`](file:///C:/Users/Lenovo/projects/secdiagram/secdiagram_core/model.py) | Data models: `Graph`, `Node`, `Edge`, `Finding`, `Loc`, `stable_id` | `stable_id()`, `SEVERITY_RANK` |
 
 ---
 
 ## 🧪 4. Required Agent Verification Steps
 
 Before declaring any coding task complete or committing changes, AI agents **MUST** execute the following verification steps in sequence:
+
+### Step 0: Confirm Task Tracking
+```bash
+python scripts/taskctl.py start <issue>
+```
+- **Requirement**: The change has an open GitHub issue with `type:*` and `priority:*` labels and the task is `In Progress` before code is edited.
 
 ### Step 1: Run Full Unit Test Suite
 ```bash
@@ -123,7 +153,24 @@ python -m bandit -r secdiagram_core -lll
 ```
 - **Requirement**: Zero high/critical severity findings.
 
-### Step 4: Verify Git Working Tree
+### Step 4: Run Containerized Build & Smoke Test Verification
+```bash
+# Build local candidate image
+docker build -t secdiagram:verify .
+
+# Smoke test CLI help and offline diagram generation
+docker run --rm secdiagram:verify --help
+docker run --rm -v "${PWD}:/repo" secdiagram:verify --dir /repo/tests/fixtures/sample_app --out /tmp/verify-out --format mermaid --image png --no-security
+```
+- **Requirement**: Container image builds cleanly without errors; CLI executes correctly as non-root user `secdiagram` (`uid 10001`); headless Chromium and Mermaid CLI render diagrams offline.
+
+### Step 5: Run Container Image Vulnerability Scan with Trivy
+```bash
+trivy image --severity CRITICAL,HIGH secdiagram:verify
+```
+- **Requirement**: Zero unresolved Critical or High vulnerabilities. In accordance with Rule 7, any unfixable upstream base image CVE must have a documented Contextual Reachability Analysis confirming that the finding is neither reachable nor exploitable in `secdiagram` before publication or release. Otherwise, the image is blocked from publication.
+
+### Step 6: Verify Git Working Tree
 ```bash
 git status
 git diff
@@ -164,6 +211,16 @@ git diff
    - Use `|` for unions: `str | None` instead of `Optional[str]`.
    - Use built-in generic collections: `list[T]`, `dict[K, V]`, `set[T]`.
    - Import abstract collection types from `collections.abc` (`Iterable`, `Mapping`, `Sequence`), **never** from `typing`.
+
+6. **Container Image Security & Vulnerability Gating**:
+   - Always build containers using minimal, hardened base layers (`python:*-slim`, `node:*-slim`) with exact `@sha256:` digest pins.
+   - Enforce non-root execution (`USER secdiagram`, UID 10001) and drop unnecessary capabilities.
+   - Never suppress or ignore Critical or High image CVEs without a comprehensive, documented contextual reachability evaluation.
+   - **Contextual Reachability & Exploitability Analysis Protocol**:
+     - *Reachability*: Determine whether the vulnerable symbol or library is dynamically loaded or statically linked in any path reachable by user inputs or execution commands.
+     - *Triggerability*: Assess whether inputs supplied to `secdiagram` (e.g., analyzed source repositories, CLI arguments) can flow into the vulnerable component.
+     - *Network Exposure*: Confirm that no unauthenticated network services expose the vulnerable component to untrusted traffic.
+     - *Documentation*: Record all findings, justifications, and verification steps in project security documentation, audit notes, or inline scanner configurations prior to container publication.
 
 ---
 
@@ -206,6 +263,10 @@ When creating branches, committing changes, or pushing on behalf of the user, AI
      python -m ruff check .
      mypy
      python -m bandit -r secdiagram_core -lll
+     python scripts/taskctl.py validate --offline
+     docker build -t secdiagram:verify .
+     docker run --rm secdiagram:verify --help
+     trivy image --severity CRITICAL,HIGH secdiagram:verify
      git push origin develop
      ```
    - Open a Pull Request targeting `develop` when human review is required.
@@ -213,6 +274,7 @@ When creating branches, committing changes, or pushing on behalf of the user, AI
 
 3. **Release Promotion (`develop` → `main`)**:
    - Merge `develop` into `main` only when the release is ready and all CI gates pass.
+   - Verify that container image scanning meets the Rule 7 threshold (all Critical and High CVEs resolved or proven unreachable/unexploitable via contextual analysis) before tagging releases that trigger Docker Hub pushes to `vserey/secdiagram`.
    - Use a Pull Request from `develop` to `main`; do not push directly to `main`.
    - Tag releases on `main` only after the release merge is verified. Tagging is a human release action; agents must not create or push tags unless explicitly instructed.
    - Immediately sync `main` back into `develop` after a release so `develop` remains the latest integration branch.

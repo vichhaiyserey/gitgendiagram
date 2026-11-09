@@ -27,6 +27,7 @@
 [Security & IaC SAST](#-security--iac-static-analysis) •
 [AI Architectural Reviews](#-ai-architectural-reviews-ollama--qwen) •
 [CLI Reference](#-cli-reference) •
+[Task Tracking](docs/TASK_TRACKING.md) •
 [Contributing](CONTRIBUTING.md)
 
 ---
