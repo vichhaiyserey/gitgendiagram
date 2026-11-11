@@ -21,9 +21,10 @@ from .render_markdown import render_markdown
 from .render_mermaid import render_mermaid
 from .render_sarif import render_sarif
 from .render_security import render_security_html, render_security_markdown
+from .render_vex import render_vex
 from .security_report import build_security_report
 
-FORMATS = {"json", "md", "mermaid", "sarif", "png", "svg", "pdf", "image", "html"}
+FORMATS = {"json", "md", "mermaid", "sarif", "png", "svg", "pdf", "image", "html", "vex"}
 
 
 def _parse_formats(value: str) -> list[str]:
@@ -686,6 +687,10 @@ def main(argv: list[str] | None = None) -> int:
         if "sarif" in args.format:
             path = out / "security.sarif"
             path.write_text(render_sarif(graph), encoding="utf-8", newline="\n")
+            written.append(path)
+        if "vex" in args.format:
+            path = out / "vex.json"
+            path.write_text(render_vex(result), encoding="utf-8", newline="\n")
             written.append(path)
 
         image_formats: list[str] = []

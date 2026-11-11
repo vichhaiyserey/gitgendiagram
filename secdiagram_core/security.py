@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .ast_index import CallRec, DefRec, FileIndex
+from .frameworks import get_registered_sanitizers, get_registered_sinks
 from .model import Finding, Graph, Loc, stable_id
 from .resolver import Resolver
 
@@ -588,14 +589,21 @@ class SecurityAnalyzer:
         return []
 
     def _sanitizer_categories(self, text: str) -> set[str]:
-        return {
+        matched = {
             category
             for category, patterns in SANITIZERS.items()
             if any(pattern.search(text) for pattern in patterns)
         }
+        custom = get_registered_sanitizers()
+        if custom and any(re.search(rf"\b{re.escape(san)}\b", text, re.IGNORECASE) for san in custom):
+            matched.update({"sql", "command", "xss", "path", "ssrf", "injection", "xxe", "code"})
+        return matched
 
     def _sanitizer_in_text(self, category: str, text: str) -> bool:
-        return any(pattern.search(text) for pattern in SANITIZERS.get(category, ()))
+        if any(pattern.search(text) for pattern in SANITIZERS.get(category, ())):
+            return True
+        custom = get_registered_sanitizers()
+        return bool(custom and any(re.search(rf"\b{re.escape(san)}\b", text, re.IGNORECASE) for san in custom))
 
     def _mark_sanitized(self, scope: str, name: str, categories: set[str]) -> None:
         if not categories:
@@ -893,6 +901,30 @@ class SecurityAnalyzer:
                 recommendation="Avoid shell=True; pass an argv list and validate inputs.",
                 trace=trace if command_tainted else None,
             )
+
+        custom_sinks = get_registered_sinks()
+        if custom_sinks:
+            callee_base = callee.rsplit(".", 1)[-1]
+            sink_match = custom_sinks.get(callee) or custom_sinks.get(callee_base)
+            if sink_match:
+                sink_cat, sink_sev = sink_match
+                tainted = bool(tainted_args or trace or any(_source_in_text(t) for t in call.arg_texts))
+                if tainted:
+                    node = self.graph.nodes.get(node_id) if node_id else None
+                    if node:
+                        _tag(node, "sink")
+                    self._add_finding(
+                        category=sink_cat,
+                        severity=sink_sev,
+                        loc=loc,
+                        cwe="CWE-20",
+                        title=f"Untrusted input to custom sink {callee}",
+                        message=f"Tainted data flows into registered custom sink '{callee}'.",
+                        node_id=node_id,
+                        confidence=0.85,
+                        recommendation="Sanitize or validate untrusted inputs before passing to custom sink.",
+                        trace=trace or [loc],
+                    )
 
         tls_keywords = " ".join(call.keywords.values())
         tls_disabled = call.keywords.get("verify", "").lower() == "false" and any(

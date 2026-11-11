@@ -43,6 +43,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.jfrog/
 
 # ==============================================================================
 # secdiagram generated artifacts & analysis outputs
