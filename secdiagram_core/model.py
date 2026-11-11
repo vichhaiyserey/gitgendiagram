@@ -33,6 +33,14 @@ class Loc:
     def to_dict(self) -> dict[str, Any]:
         return {"path": self.path, "line": self.line, "col": self.col}
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Loc:
+        return cls(
+            path=str(data.get("path", "")),
+            line=int(data.get("line", 0)),
+            col=int(data.get("col", 0)),
+        )
+
 
 @dataclass(slots=True)
 class Node:
@@ -67,6 +75,20 @@ class Node:
             out["attrs"] = self.attrs
         return out
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Node:
+        return cls(
+            id=str(data["id"]),
+            kind=str(data.get("kind", "")),
+            name=str(data.get("name", "")),
+            qualname=str(data.get("qualname", "")),
+            path=data.get("path"),
+            line=data.get("line"),
+            feature=data.get("feature"),
+            doc=data.get("doc"),
+            attrs=dict(data.get("attrs", {})),
+        )
+
 
 @dataclass(slots=True)
 class Edge:
@@ -91,6 +113,18 @@ class Edge:
             out["attrs"] = self.attrs
         return out
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Edge:
+        return cls(
+            src=str(data["src"]),
+            dst=str(data["dst"]),
+            kind=str(data["kind"]),
+            confidence=float(data.get("confidence", 1.0)),
+            resolution=str(data.get("resolution", "exact")),
+            evidence=[Loc.from_dict(loc) for loc in data.get("evidence", [])],
+            attrs=dict(data.get("attrs", {})),
+        )
+
 
 @dataclass(slots=True)
 class Feature:
@@ -108,6 +142,16 @@ class Feature:
             "nodes": sorted(self.nodes),
             "files": sorted(self.files),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Feature:
+        return cls(
+            id=str(data["id"]),
+            name=str(data.get("name", "")),
+            description=str(data.get("description", "")),
+            nodes=list(data.get("nodes", [])),
+            files=list(data.get("files", [])),
+        )
 
 
 @dataclass(slots=True)
@@ -152,6 +196,26 @@ class Finding:
         if self.metadata:
             out["metadata"] = self.metadata
         return out
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Finding:
+        return cls(
+            id=str(data["id"]),
+            category=str(data.get("category", "")),
+            severity=str(data.get("severity", "medium")),
+            title=str(data.get("title", "")),
+            message=str(data.get("message", "")),
+            node_id=data.get("node_id"),
+            cwe=data.get("cwe"),
+            confidence=float(data.get("confidence", 0.8)),
+            evidence=[Loc.from_dict(loc) for loc in data.get("evidence", [])],
+            recommendation=str(data.get("recommendation", "")),
+            baseline=bool(data.get("baseline", False)),
+            trace=[Loc.from_dict(loc) for loc in data.get("trace", [])],
+            source=str(data.get("source", "secdiagram")),
+            external_id=data.get("external_id"),
+            metadata=dict(data.get("metadata", {})),
+        )
 
 
 @dataclass(slots=True)
@@ -262,3 +326,216 @@ class Graph:
             "edges": [edge.to_dict() for edge in self.sorted_edges()],
             "findings": [finding.to_dict() for finding in self.findings],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Graph:
+        graph = cls()
+        graph.meta = dict(data.get("meta", {}))
+        for node_data in data.get("nodes", []):
+            node = Node.from_dict(node_data)
+            graph.nodes[node.id] = node
+        for edge_data in data.get("edges", []):
+            graph.edges.append(Edge.from_dict(edge_data))
+        for feat_data in data.get("features", []):
+            graph.features.append(Feature.from_dict(feat_data))
+        for finding_data in data.get("findings", []):
+            graph.findings.append(Finding.from_dict(finding_data))
+        return graph
+
+    def has_taint_at(self, file_path: str, line: int | None = None) -> bool:
+        """Returns True if any taint trace or finding evidence touches file_path[:line]."""
+        for finding in self.findings:
+            locs = list(finding.trace) if finding.trace else list(finding.evidence)
+            for loc in locs:
+                if _paths_match(loc.path, file_path):
+                    if line is None or loc.line == line:
+                        return True
+        return False
+
+    def get_taint_traces(self, file_path: str, line: int | None = None) -> list[TaintTrace]:
+        """Returns all TaintTrace objects touching file_path[:line]."""
+        traces: list[TaintTrace] = []
+        for finding in self.findings:
+            locs = list(finding.trace) if finding.trace else list(finding.evidence)
+            matches = False
+            for loc in locs:
+                if _paths_match(loc.path, file_path):
+                    if line is None or loc.line == line:
+                        matches = True
+                        break
+            if matches:
+                source = finding.trace[0] if finding.trace else None
+                sink = (
+                    finding.trace[-1]
+                    if finding.trace
+                    else (finding.evidence[0] if finding.evidence else None)
+                )
+                trace_locs = list(finding.trace) if finding.trace else list(finding.evidence)
+                traces.append(
+                    TaintTrace(
+                        finding_id=finding.id,
+                        category=finding.category,
+                        severity=finding.severity,
+                        cwe=finding.cwe,
+                        source=source,
+                        sink=sink,
+                        trace=trace_locs,
+                        message=finding.message,
+                        rule_id=str(finding.metadata.get("rule_id", finding.category)),
+                    )
+                )
+        return traces
+
+    def get_entrypoint_nodes(self) -> list[Node]:
+        """Return all entrypoint nodes (HTTP endpoints, RPC, tasks, CLI)."""
+        entrypoints: list[Node] = []
+        for node in self.nodes.values():
+            if node.kind == "endpoint" or node.attrs.get("role") == "endpoint":
+                entrypoints.append(node)
+                continue
+            tags = [str(t).lower() for t in node.attrs.get("tags", [])]
+            if "endpoint" in tags or "route" in tags or "auth" in tags or "auth_dependency" in tags:
+                entrypoints.append(node)
+                continue
+            if node.attrs.get("routes"):
+                entrypoints.append(node)
+                continue
+        return entrypoints
+
+    def get_reachable_nodes_from_entrypoints(self) -> set[str]:
+        """Compute the set of node IDs reachable from exposed entrypoints via BFS."""
+        entrypoints = self.get_entrypoint_nodes()
+        if not entrypoints:
+            return set()
+
+        adj: dict[str, list[str]] = {node_id: [] for node_id in self.nodes}
+        for edge in self.edges:
+            if edge.src in adj:
+                adj[edge.src].append(edge.dst)
+
+        visited: set[str] = set()
+        queue = [ep.id for ep in entrypoints if ep.id in self.nodes]
+        for ep_id in queue:
+            visited.add(ep_id)
+
+        head = 0
+        while head < len(queue):
+            current = queue[head]
+            head += 1
+            for neighbor in adj.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+        return visited
+
+    def is_reachable(self, file_path: str, symbol: str | None = None) -> bool:
+        """Returns True if the file or symbol is reachable from an exposed entrypoint."""
+        entrypoints = self.get_entrypoint_nodes()
+        if not entrypoints:
+            return False
+
+        reachable_ids = self.get_reachable_nodes_from_entrypoints()
+
+        for node_id in reachable_ids:
+            node = self.nodes.get(node_id)
+            if node is None or not node.path:
+                continue
+            if _paths_match(node.path, file_path):
+                if symbol is None:
+                    return True
+                if (
+                    node.name == symbol
+                    or node.qualname == symbol
+                    or node.qualname.endswith("." + symbol)
+                    or node.qualname.endswith("::" + symbol)
+                ):
+                    return True
+        return False
+
+
+def _normalize_path_str(path: str) -> str:
+    cleaned = path.replace("\\", "/").strip().lstrip("/")
+    if cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    return cleaned
+
+
+def _paths_match(path_a: str, path_b: str) -> bool:
+    norm_a = _normalize_path_str(path_a)
+    norm_b = _normalize_path_str(path_b)
+    if not norm_a or not norm_b:
+        return False
+    if norm_a == norm_b:
+        return True
+    return norm_a.endswith("/" + norm_b) or norm_b.endswith("/" + norm_a)
+
+
+@dataclass(slots=True)
+class TaintTrace:
+    finding_id: str
+    category: str
+    severity: str
+    cwe: str | None = None
+    source: Loc | None = None
+    sink: Loc | None = None
+    trace: list[Loc] = field(default_factory=list)
+    message: str = ""
+    rule_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "finding_id": self.finding_id,
+            "category": self.category,
+            "severity": self.severity,
+            "cwe": self.cwe,
+            "source": self.source.to_dict() if self.source else None,
+            "sink": self.sink.to_dict() if self.sink else None,
+            "trace": [loc.to_dict() for loc in self.trace],
+            "message": self.message,
+            "rule_id": self.rule_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TaintTrace:
+        return cls(
+            finding_id=str(data.get("finding_id", "")),
+            category=str(data.get("category", "")),
+            severity=str(data.get("severity", "")),
+            cwe=data.get("cwe"),
+            source=Loc.from_dict(data["source"]) if data.get("source") else None,
+            sink=Loc.from_dict(data["sink"]) if data.get("sink") else None,
+            trace=[Loc.from_dict(loc) for loc in data.get("trace", [])],
+            message=str(data.get("message", "")),
+            rule_id=str(data.get("rule_id", "")),
+        )
+
+
+@dataclass(slots=True)
+class DependencyReachabilitySummary:
+    package_name: str
+    imported: bool = False
+    reachable_from_entrypoint: bool = False
+    import_sites: list[Loc] = field(default_factory=list)
+    entrypoints: list[str] = field(default_factory=list)
+    call_paths: list[list[str]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "package_name": self.package_name,
+            "imported": self.imported,
+            "reachable_from_entrypoint": self.reachable_from_entrypoint,
+            "import_sites": [loc.to_dict() for loc in self.import_sites],
+            "entrypoints": sorted(self.entrypoints),
+            "call_paths": self.call_paths,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DependencyReachabilitySummary:
+        return cls(
+            package_name=str(data.get("package_name", "")),
+            imported=bool(data.get("imported", False)),
+            reachable_from_entrypoint=bool(data.get("reachable_from_entrypoint", False)),
+            import_sites=[Loc.from_dict(loc) for loc in data.get("import_sites", [])],
+            entrypoints=list(data.get("entrypoints", [])),
+            call_paths=[list(path) for path in data.get("call_paths", [])],
+        )

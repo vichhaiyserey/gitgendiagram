@@ -1203,3 +1203,16 @@ def render_mermaid_highlevel(
         lines.append(f"  {conn.src} {arrow} {conn.dst}")
 
     return "\n".join(lines) + "\n"
+
+
+def __getattr__(name: str) -> Any:
+    """Backward compatibility shims for downstream tools importing across modules."""
+    if name in {"analyze", "run_analysis", "AnalysisConfig", "AnalysisResult"}:
+        from . import analyzer
+
+        return getattr(analyzer, name)
+    if name == "render_mermaid":
+        from .render_mermaid import render_mermaid as rm
+
+        return rm
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

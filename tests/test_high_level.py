@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -187,8 +188,13 @@ class HighLevelArchitectureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out"
             stdout = io.StringIO()
-            with contextlib.redirect_stdout(stdout):
-                code = main(["--dir", str(SAMPLE_APP_DIR), "--out", str(out), "--image", "png", "--quiet"])
+
+            def fake_render_image(mermaid_source: str, output_path: Path | str, image_format: str = "png", **kwargs: object) -> None:
+                Path(output_path).write_bytes(b"\x89PNG\r\n\x1a\nfake")
+
+            with mock.patch("secdiagram_core.cli.render_image", side_effect=fake_render_image):
+                with contextlib.redirect_stdout(stdout):
+                    code = main(["--dir", str(SAMPLE_APP_DIR), "--out", str(out), "--image", "png", "--quiet"])
             self.assertEqual(code, 0)
 
             self.assertTrue((out / "diagram.png").exists())
