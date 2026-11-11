@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 SCHEMA_VERSION = 1
 
 from .analyzer import AnalysisConfig, AnalysisResult, analyze, run_analysis
