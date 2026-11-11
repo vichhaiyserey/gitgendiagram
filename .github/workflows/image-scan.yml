@@ -1,0 +1,58 @@
+name: Image vulnerability scan
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+concurrency:
+  group: image-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan published image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Pull published image
+        run: docker pull vserey/secdiagram:latest
+      # Blocking gate with the reviewed, expiring baseline. Any newly
+      # disclosed or fixable CRITICAL/HIGH finding fails the job.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: vserey/secdiagram:latest
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          format: sarif
+          limit-severities-for-sarif: true
+          output: trivy-scheduled-image.sarif
+          trivyignores: .trivyignore.yaml
+          exit-code: "1"
+      - name: Upload Trivy SARIF
+        if: always() && hashFiles('trivy-scheduled-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
+        with:
+          sarif_file: trivy-scheduled-image.sarif
+          category: trivy-scheduled-image
+      - name: Open or refresh tracking issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          title="Scheduled image scan failed: vserey/secdiagram:latest"
+          body="The weekly Trivy scan found unclassified or fixable CRITICAL/HIGH findings on \`vserey/secdiagram:latest\`. Review the workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \
+              --label "type:security" --label "priority:P1" --label "area:ci"
+          fi
